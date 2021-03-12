@@ -16,10 +16,10 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.dataset import BasicDataset
 from torch.utils.data import DataLoader, random_split
 
-dir_img = 'data/imgs/'
-dir_mask = 'data/masks/'
+dir_default = 'data/'
 dir_checkpoint = 'checkpoints/'
 
+#torch.manual_seed(0)
 
 def train_net(net,
               device,
@@ -28,14 +28,14 @@ def train_net(net,
               lr=0.001,
               val_percent=0.1,
               save_cp=True,
-              img_scale=0.5):
+              img_scale=1):
 
-    dataset = BasicDataset(dir_img, dir_mask, img_scale)
+    dataset = BasicDataset(dir_default, img_scale)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
-    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=True)
 
     writer = SummaryWriter(comment=f'LR_{lr}_BS_{batch_size}_SCALE_{img_scale}')
     global_step = 0
@@ -66,11 +66,12 @@ def train_net(net,
             for batch in train_loader:
                 imgs = batch['image']
                 true_masks = batch['mask']
+                
                 assert imgs.shape[1] == net.n_channels, \
                     f'Network has been defined with {net.n_channels} input channels, ' \
                     f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
                     'the images are loaded correctly.'
-
+                
                 imgs = imgs.to(device=device, dtype=torch.float32)
                 mask_type = torch.float32 if net.n_classes == 1 else torch.long
                 true_masks = true_masks.to(device=device, dtype=mask_type)
@@ -108,7 +109,8 @@ def train_net(net,
                     writer.add_images('images', imgs, global_step)
                     if net.n_classes == 1:
                         writer.add_images('masks/true', true_masks, global_step)
-                        writer.add_images('masks/pred', torch.sigmoid(masks_pred) > 0.5, global_step)
+                        #writer.add_images('masks/pred', torch.sigmoid(masks_pred) > 0.5, global_step)
+                        writer.add_images('masks/pred', torch.sigmoid(masks_pred), global_step)
 
         if save_cp:
             try:
@@ -134,7 +136,7 @@ def get_args():
                         help='Learning rate', dest='lr')
     parser.add_argument('-f', '--load', dest='load', type=str, default=False,
                         help='Load model from a .pth file')
-    parser.add_argument('-s', '--scale', dest='scale', type=float, default=0.5,
+    parser.add_argument('-s', '--scale', dest='scale', type=float, default=1,
                         help='Downscaling factor of the images')
     parser.add_argument('-v', '--validation', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')
@@ -154,7 +156,7 @@ if __name__ == '__main__':
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    net = UNet(n_channels=3, n_classes=1, bilinear=True)
+    net = UNet(n_channels=1, n_classes=1, bilinear=True)
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
                  f'\t{net.n_classes} output channels (classes)\n'
